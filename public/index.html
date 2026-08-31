@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="/manifest.json">
+<title>쿠팡 경쟁가격 모니터 v4</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;background:#f4f6f8;color:#171717}
+.wrap{max-width:760px;margin:auto;padding:18px 14px 90px}.top{display:flex;justify-content:space-between;align-items:center}
+h1{font-size:22px;margin:8px 0 18px}.card{background:#fff;border-radius:16px;padding:15px;margin-bottom:12px;box-shadow:0 2px 12px #0000000c}
+label{font-size:13px;font-weight:700}.url{width:100%;margin-top:8px;padding:14px;border:1px solid #d9dde3;border-radius:12px;font-size:15px}
+button{border:0;border-radius:11px;padding:12px 14px;font-weight:700}.primary{width:100%;margin-top:10px;background:#1473e6;color:#fff}
+.row{display:flex;gap:8px}.row>*{flex:1}.muted{color:#777;font-size:12px}.stat{font-size:13px;margin-top:8px}
+.item{display:grid;grid-template-columns:1fr auto;gap:8px;border-top:1px solid #eee;padding:13px 0}.item:first-child{border-top:0}
+.name{font-weight:700;font-size:14px}.price{font-weight:800;text-align:right}.down{color:#d92727}.up{color:#1473e6}
+.badge{display:inline-block;padding:3px 7px;background:#f1f3f5;border-radius:8px;font-size:11px;margin-top:5px}
+.empty{text-align:center;padding:28px 8px;color:#777}.err{color:#b42318;font-size:12px;margin-top:8px;white-space:pre-wrap}.ok{color:#067647;font-size:12px;margin-top:8px}
+</style></head>
+<body><div class="wrap">
+<div class="top"><h1>쿠팡 경쟁가격 모니터</h1><span class="muted">v4</span></div>
+
+<div class="card">
+<label>쿠팡 검색결과 전체 URL</label>
+<input id="url" class="url" placeholder="https://www.coupang.com/np/search?...">
+<button id="btn" class="primary" onclick="checkPrices()">실제 가격 확인</button>
+<div class="muted" style="margin-top:9px">쿠팡 검색결과 주소창 URL을 그대로 붙여넣으세요.</div>
+<div id="msg"></div>
+</div>
+
+<div class="card">
+<div class="row"><div><b>감시 검색어</b><div id="keyword" class="stat">-</div></div>
+<div><b>마지막 확인</b><div id="checked" class="stat">-</div></div></div>
+</div>
+
+<div class="card"><b>경쟁상품</b><div id="list" class="empty">URL을 넣고 실제 가격 확인을 눌러주세요.</div></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=n=>Number(n).toLocaleString("ko-KR")+"원";
+function esc(s){return (s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function hist(){return JSON.parse(localStorage.getItem("cp_hist_v4")||"{}")}
+function saveHist(x){localStorage.setItem("cp_hist_v4",JSON.stringify(x))}
+function render(items){
+  const h=hist(), next={...h};
+  $("list").className="";
+  $("list").innerHTML=items.map(it=>{
+    const key=it.url||it.name, prev=h[key]?.price, cur=it.price;
+    let diff="", cls="";
+    if(prev!=null && prev!==cur){const d=cur-prev; diff=(d<0?"▼ ":"▲ ")+fmt(Math.abs(d)); cls=d<0?"down":"up"}
+    else if(prev!=null) diff="변동 없음";
+    next[key]={price:cur,name:it.name,ts:Date.now()};
+    return `<div class="item"><div><div class="name">${esc(it.name)}</div>${prev!=null?`<span class="badge">이전 ${fmt(prev)}</span>`:""}</div>
+    <div><div class="price">${fmt(cur)}</div><div class="${cls}" style="font-size:12px;text-align:right;margin-top:5px">${diff}</div></div></div>`
+  }).join("");
+  saveHist(next);
+}
+async function checkPrices(){
+  const url=$("url").value.trim();
+  if(!url){alert("쿠팡 검색 URL을 넣어주세요.");return}
+  localStorage.setItem("cp_url_v4",url);
+  try{const u=new URL(url);$("keyword").textContent=u.searchParams.get("q")||"쿠팡 검색"}catch(e){}
+  $("btn").disabled=true;$("btn").textContent="확인 중...";
+  $("msg").className="muted";$("msg").textContent="쿠팡 검색결과를 확인하고 있습니다...";
+  $("list").className="empty";$("list").textContent="잠시만 기다려주세요.";
+  try{
+    const r=await fetch("/api/coupang-search",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({url})});
+    const data=await r.json().catch(()=>({error:"서버 응답을 읽지 못했습니다."}));
+    if(!r.ok) throw new Error(data.error||"조회 실패");
+    $("checked").textContent=new Date().toLocaleString("ko-KR");
+    $("msg").className="ok";$("msg").textContent=`${data.count}개 상품 확인`;
+    render(data.items);
+  }catch(e){
+    $("msg").className="err";$("msg").textContent=e.message;
+    $("list").className="empty";$("list").textContent="가격을 가져오지 못했습니다.";
+  }finally{
+    $("btn").disabled=false;$("btn").textContent="실제 가격 확인";
+  }
+}
+const old=localStorage.getItem("cp_url_v4");if(old)$("url").value=old;
+</script>
+</body></html>
