@@ -1,110 +1,15 @@
-
-const express = require("express");
-const puppeteer = require("puppeteer-core");
-
-const app = express();
-app.use(express.json({limit:"1mb"}));
-app.use(express.static("public"));
-
-const PORT = process.env.PORT || 3000;
-
-function cleanPrice(s=""){
-  const m = String(s).replace(/\s+/g," ").match(/([0-9][0-9,]{2,})\s*원/);
-  return m ? Number(m[1].replace(/,/g,"")) : 0;
-}
-
-app.get("/health", (req,res)=>res.json({ok:true, service:"coupang-price-monitor-v4"}));
-
-app.post("/api/coupang-search", async (req,res)=>{
-  const url = req.body?.url;
-  if(!url || !/^https:\/\/(www\.)?coupang\.com\/np\/search/i.test(url)){
-    return res.status(400).json({error:"쿠팡 검색결과 URL을 확인해주세요."});
-  }
-
-  let browser;
-  try{
-    browser = await puppeteer.launch({
-      executablePath: process.env.CHROME_BIN || "/usr/bin/chromium",
-      headless: true,
-      args: [
-        "--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage",
-        "--disable-gpu","--no-zygote","--single-process"
-      ]
-    });
-
-    const page = await browser.newPage();
-    await page.setViewport({width:1280,height:900});
-    await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-      "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
-    );
-    await page.setExtraHTTPHeaders({
-      "Accept-Language":"ko-KR,ko;q=0.9,en;q=0.8"
-    });
-
-    const response = await page.goto(url,{waitUntil:"domcontentloaded",timeout:45000});
-    const status = response ? response.status() : 0;
-
-    await new Promise(r=>setTimeout(r,2500));
-
-    const title = await page.title().catch(()=> "");
-    const bodyText = await page.evaluate(()=>document.body?.innerText?.slice(0,4000)||"").catch(()=> "");
-
-    const items = await page.evaluate(()=>{
-      const out=[];
-      const sels = [
-        "li.search-product",
-        "li[class*='search-product']",
-        "[data-product-id]"
-      ];
-      const nodes = Array.from(document.querySelectorAll(sels.join(",")));
-      const seen = new Set();
-
-      for(const el of nodes){
-        let name =
-          el.querySelector(".name")?.textContent?.trim() ||
-          el.querySelector("[class*='name']")?.textContent?.trim() || "";
-        let priceText =
-          el.querySelector(".price-value")?.textContent?.trim() ||
-          el.querySelector("[class*='price-value']")?.textContent?.trim() || "";
-        if(!priceText){
-          const txt = el.textContent || "";
-          const m = txt.match(/([0-9][0-9,]{2,})\s*원/);
-          priceText = m ? m[1] : "";
-        }
-        const a = el.querySelector("a[href]");
-        let href = a?.href || "";
-        const pm = String(priceText).replace(/\s+/g," ").match(/([0-9][0-9,]{2,})/);
-        const price = pm ? Number(pm[1].replace(/,/g,"")) : 0;
-
-        if(name && price){
-          const key = href || (name+"|"+price);
-          if(!seen.has(key)){
-            seen.add(key);
-            out.push({name:name.slice(0,180),price,url:href});
-          }
-        }
-        if(out.length>=80) break;
-      }
-      return out;
-    });
-
-    if(!items.length){
-      const blocked = /Access Denied|접근이 제한|비정상적인 접근|captcha|robot/i.test(bodyText+title);
-      return res.status(502).json({
-        error: blocked
-          ? "쿠팡이 서버의 자동 접속을 차단했습니다."
-          : "쿠팡 페이지는 열렸지만 상품 가격을 찾지 못했습니다.",
-        diagnostic:{status,title,blocked}
-      });
-    }
-
-    return res.json({items, count:items.length, checkedAt:new Date().toISOString()});
-  }catch(e){
-    return res.status(500).json({error:"수집 서버 오류: "+e.message});
-  }finally{
-    if(browser) await browser.close().catch(()=>{});
-  }
-});
-
-app.listen(PORT, ()=>console.log("Server running on", PORT));
+const express=require("express");
+const path=require("path");
+const puppeteer=require("puppeteer-core");
+const app=express(); const PORT=process.env.PORT||3000; const CHROME=process.env.PUPPETEER_EXECUTABLE_PATH||"/usr/bin/chromium";
+app.use(express.json({limit:"200kb"})); app.use(express.static(path.join(__dirname,"public")));
+let lastRequestAt=0; const MIN_INTERVAL_MS=12000;
+function isCoupangUrl(raw){try{const u=new URL(raw);return /(^|\\.)coupang\\.com$/i.test(u.hostname)}catch{return false}}
+async function extractProducts(page){return await page.evaluate(()=>{const money=t=>{const m=String(t||"").match(/(\\d{1,3}(?:,\\d{3})+|\\d+)\\s*원?/);return m?Number(m[1].replace(/,/g,"")):null}; const u=new Map(); const add=(n,p,url)=>{if(!n||!p)return;const k=(url||n).trim();if(!u.has(k))u.set(k,{name:n.trim().replace(/\\s+/g," "),price:p,url:url||""})};
+for(const node of document.querySelectorAll('script[type="application/ld+json"]')){try{const data=JSON.parse(node.textContent);const walk=o=>{if(!o||typeof o!=="object")return;if(o["@type"]==="Product"){const offers=Array.isArray(o.offers)?o.offers[0]:o.offers;add(o.name||document.title,money(offers&&(offers.price||offers.lowPrice)),location.href)}for(const v of Object.values(o)){if(v&&typeof v==="object"){if(Array.isArray(v))v.forEach(walk);else walk(v)}}};(Array.isArray(data)?data:[data]).forEach(walk)}catch{}}
+const sels=["li.search-product","[class*='search-product']","article","[data-product-id]"];const cards=[...new Set(sels.flatMap(s=>[...document.querySelectorAll(s)]))];for(const c of cards.slice(0,80)){const ne=c.querySelector(".name,[class*='name'],h2,h3,a");const pe=c.querySelector(".price-value,[class*='price-value'],[class*='price']")||c;const le=c.querySelector("a[href*='/vp/products/'],a[href]");add(ne?.textContent||"",money(pe?.textContent||""),le?.href||"")}
+if(!u.size){let title="";for(const s of ["h1","[class*='prod-buy-header__title']","[class*='product-title']","meta[property='og:title']"]){const el=document.querySelector(s);title=el?.content||el?.textContent||"";if(title.trim())break}for(const s of [".total-price strong","[class*='total-price'] strong","[class*='sales-price']","[class*='price']"]){for(const el of document.querySelectorAll(s)){const p=money(el.textContent);if(p&&p>=100){add(title||document.title,p,location.href);break}}if(u.size)break}}
+return [...u.values()].slice(0,30)})}
+app.get('/api/health',(req,res)=>res.json({ok:true,version:'5.0.0'}));
+app.post('/api/check',async(req,res)=>{const url=String(req.body?.url||'').trim();if(!isCoupangUrl(url))return res.status(400).json({ok:false,error:'쿠팡 URL을 입력해주세요.'});const wait=MIN_INTERVAL_MS-(Date.now()-lastRequestAt);if(wait>0)return res.status(429).json({ok:false,error:`연속 호출을 막고 있습니다. ${Math.ceil(wait/1000)}초 후 다시 눌러주세요.`});lastRequestAt=Date.now();let browser;try{browser=await puppeteer.launch({executablePath:CHROME,headless:true,args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage','--disable-gpu','--window-size=1365,900']});const page=await browser.newPage();await page.setViewport({width:1365,height:900});await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');await page.setExtraHTTPHeaders({'accept-language':'ko-KR,ko;q=0.9,en;q=0.7'});const response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});const status=response?response.status():0;if(status===403||status===429)return res.status(502).json({ok:false,blocked:true,httpStatus:status,error:`쿠팡이 이 서버의 접속을 제한했습니다. (HTTP ${status})`});await new Promise(r=>setTimeout(r,2500));const bodyText=await page.evaluate(()=>document.body?.innerText?.slice(0,5000)||'');if(/Access Denied|접근이 제한|비정상적인 접근|captcha/i.test(bodyText))return res.status(502).json({ok:false,blocked:true,error:'쿠팡이 서버 접속을 제한한 화면을 반환했습니다.'});const products=await extractProducts(page);if(!products.length)return res.status(422).json({ok:false,error:'페이지는 열렸지만 가격을 찾지 못했습니다. 상품 상세 URL로도 테스트해 주세요.'});res.json({ok:true,checkedAt:new Date().toISOString(),count:products.length,products})}catch(e){res.status(500).json({ok:false,error:'가격 확인 중 오류가 발생했습니다.',detail:String(e?.message||e).slice(0,300)})}finally{if(browser){try{await browser.close()}catch{}}}});
+app.listen(PORT,'0.0.0.0',()=>console.log(`Coupang Price Monitor v5 listening on ${PORT}`));

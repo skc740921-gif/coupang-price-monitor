@@ -1,12 +1,13 @@
 {
-  "name": "coupang-price-monitor-v4",
-  "version": "4.0.0",
+  "name": "coupang-price-monitor-v5",
+  "version": "5.0.0",
   "private": true,
+  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "4.21.2",
-    "puppeteer-core": "24.16.0"
+    "express": "^4.21.2",
+    "puppeteer-core": "^24.16.0"
   }
 }
