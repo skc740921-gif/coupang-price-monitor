@@ -1,30 +1,7 @@
-const keyEl=document.getElementById("key"), statusEl=document.getElementById("status"), listEl=document.getElementById("list");
-keyEl.value=localStorage.getItem("apiKey")||"";
-const won=n=>n==null?"-":Number(n).toLocaleString("ko-KR")+"원";
-const esc=s=>String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-function render(items){
- listEl.innerHTML=items.length?items.map(x=>{
-   let d="", cls="";
-   if(x.previous!=null){
-     const diff=x.price-x.previous;
-     if(diff<0){d=`▼ ${Math.abs(diff).toLocaleString("ko-KR")}원 인하`;cls="down"}
-     else if(diff>0){d=`▲ ${diff.toLocaleString("ko-KR")}원 인상`;cls="up"}
-     else d="변동 없음";
-   } else d="첫 등록";
-   return `<div class="item"><div class="name">${esc(x.name)}</div><div class="price">${won(x.price)}</div><div class="diff ${cls}">${d}</div><div class="meta">직전 ${won(x.previous)} · 최저 ${won(x.lowest)} · 최고 ${won(x.highest)}<br>최근 확인 ${new Date(x.time).toLocaleString("ko-KR")}</div></div>`;
- }).join(""):'<div class="card muted">아직 등록된 상품이 없습니다.</div>';
-}
-async function load(){
- const key=localStorage.getItem("apiKey")||"";
- if(!key){statusEl.textContent="API 키를 입력하세요.";return}
- statusEl.textContent="불러오는 중...";
- try{
-   const r=await fetch("/api/items",{headers:{"x-api-key":key}});
-   const j=await r.json();
-   if(!r.ok) throw new Error(j.error||"불러오기 실패");
-   render(j.items||[]); statusEl.textContent="최신 정보";
- }catch(e){statusEl.textContent="오류: "+e.message}
-}
-document.getElementById("save").onclick=()=>{localStorage.setItem("apiKey",keyEl.value.trim());load()};
-load();
-setInterval(load,60000);
+
+const K=document.getElementById("k"),S=document.getElementById("s"),L=document.getElementById("l");K.value=localStorage.apiKey||"";
+const w=n=>n==null?"-":Number(n).toLocaleString("ko-KR")+"원",e=s=>String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+const d=(p,q)=>q==null?"첫 등록":p<q?`<span class=down>▼ ${w(q-p)} 인하</span>`:p>q?`<span class=up>▲ ${w(p-q)} 인상</span>`:"변동 없음";
+async function load(){if(!localStorage.apiKey){S.textContent="API 키 입력";return}let r=await fetch("/api/items",{headers:{"x-api-key":localStorage.apiKey}}),j=await r.json();if(!r.ok){S.textContent="오류: "+j.error;return}
+L.innerHTML=(j.items||[]).map(x=>`<div class=c><div class=n>${e(x.name)}</div>${(x.options||[]).length?(x.options||[]).map(o=>`<div class=o><b>${e(o.name)}</b>${o.selected?" · 현재선택":""}<div class=p>${w(o.price)}</div><div class=m>${d(o.price,o.previous)} · 최저 ${w(o.lowest)} · 최고 ${w(o.highest)}</div></div>`).join(""):`<div class=p>${w(x.price)}</div>`}<div class=m>${new Date(x.time).toLocaleString("ko-KR")}</div></div>`).join("")||"<div class=c>등록 상품 없음</div>";S.textContent="최신 정보"}
+document.getElementById("b").onclick=()=>{localStorage.apiKey=K.value.trim();load()};load();
