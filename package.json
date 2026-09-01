@@ -1,16 +1,12 @@
 {
-  "name": "coupang-price-monitor-v6",
-  "version": "6.0.0",
+  "name": "coupang-price-monitor-mobile",
+  "version": "1.0.0",
   "private": true,
   "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
   "dependencies": {
-    "express": "^4.21.2",
-    "puppeteer-core": "^24.16.0"
+    "express": "^4.21.2"
   }
 }

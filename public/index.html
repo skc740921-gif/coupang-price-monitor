@@ -1,1 +1,22 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>쿠팡 가격 모니터 v5</title><style>body{margin:0;background:#f6f7f9;font-family:system-ui;color:#111}.wrap{max-width:760px;margin:auto;padding:20px 14px}.card{background:white;border:1px solid #e6e8eb;border-radius:18px;padding:18px}h1{font-size:24px;margin:0 0 8px}.sub{color:#666;font-size:14px;line-height:1.5;margin-bottom:18px}input,button{box-sizing:border-box;width:100%;padding:14px;border-radius:12px;font-size:16px}input{border:1px solid #cfd4da}button{margin-top:12px;border:0;background:#111;color:white;font-weight:800}.status{margin-top:14px;padding:12px;border-radius:12px;background:#f2f4f7;white-space:pre-wrap}.err{background:#fff0f0;color:#b00020}.ok{background:#eef9f0;color:#126b2c}.row{margin-top:12px;border:1px solid #e6e8eb;border-radius:12px;padding:13px}.name{font-weight:700}.price{font-size:22px;font-weight:900;margin-top:6px}</style></head><body><div class="wrap"><div class="card"><h1>쿠팡 가격 모니터 v5</h1><div class="sub">쿠팡 검색결과 URL 또는 상품 상세 URL을 넣고 현재 가격을 확인합니다.</div><input id="url" placeholder="https://www.coupang.com/..."><button id="check">가격 확인</button><div id="status" class="status">준비됨</div><div id="results"></div></div></div><script>const u=document.getElementById('url'),b=document.getElementById('check'),s=document.getElementById('status'),r=document.getElementById('results');const won=n=>Number(n).toLocaleString('ko-KR')+'원';b.onclick=async()=>{if(!u.value.trim()){s.className='status err';s.textContent='쿠팡 URL을 넣어주세요.';return}b.disabled=true;s.className='status';s.textContent='가격을 확인하고 있습니다. 첫 실행이면 최대 1분 정도 걸릴 수 있습니다.';r.innerHTML='';try{const q=await fetch('/api/check',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url:u.value.trim()})});const d=await q.json().catch(()=>({ok:false,error:'서버 응답을 읽지 못했습니다.'}));if(!q.ok||!d.ok){s.className='status err';s.textContent=d.error||'확인 실패';return}s.className='status ok';s.textContent=`성공: ${d.count}개 가격을 찾았습니다.`;r.innerHTML=d.products.map(p=>`<div class="row"><div class="name">${p.name}</div><div class="price">${won(p.price)}</div></div>`).join('')}catch(e){s.className='status err';s.textContent='서버 연결에 실패했습니다.'}finally{b.disabled=false}};</script></body></html>
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>쿠팡 가격 모니터</title>
+<style>
+body{margin:0;background:#f5f6f8;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#111}
+.wrap{max-width:760px;margin:auto;padding:18px 12px 60px}
+.card{background:#fff;border:1px solid #e2e4e7;border-radius:16px;padding:16px;margin-bottom:12px}
+h1{font-size:23px;margin:0 0 5px}.sub{font-size:12px;color:#666;line-height:1.5}
+input{width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccc;border-radius:10px;margin-top:8px}
+button{border:0;border-radius:10px;padding:11px 14px;font-weight:800;margin-top:8px;cursor:pointer}
+.primary{background:#111;color:#fff;width:100%}.muted{font-size:12px;color:#777}
+.item{background:#fff;border:1px solid #e2e4e7;border-radius:14px;padding:15px;margin-top:10px}
+.name{font-weight:900;line-height:1.4}.price{font-size:25px;font-weight:900;margin-top:5px}
+.diff{font-size:13px;margin-top:4px}.meta{font-size:12px;color:#666;margin-top:5px;line-height:1.5}
+.down{color:#0a7d2d}.up{color:#b00020}
+</style></head>
+<body><div class="wrap">
+<div class="card"><h1>쿠팡 가격 모니터</h1><div class="sub">휴대폰에서도 볼 수 있습니다. 최초 1회 API 키를 입력하세요.</div>
+<input id="key" type="password" placeholder="API 키">
+<button class="primary" id="save">저장하고 불러오기</button><div id="status" class="muted"></div></div>
+<div id="list"></div>
+</div><script src="/app.js"></script></body></html>
