@@ -537,7 +537,16 @@ app.post("/api/update", auth, async (req, res) => {
     notify
   });
 });
+app.post("/api/delete", auth, (req, res) => {
+  const url = req.body?.url;
+  if (!url) return res.status(400).json({ ok: false, error: "url 필요" });
 
+  const d = rd();
+  d.items = (d.items || []).filter(x => x.url !== url);
+  wr(d);
+
+  res.json({ ok: true });
+});
 app.get("*", (req, res) => {
   res.sendFile(
     path.join(__dirname, "public", "index.html")
