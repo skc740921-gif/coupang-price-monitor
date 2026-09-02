@@ -14,7 +14,6 @@ const KAKAO_REDIRECT_URI =
   process.env.KAKAO_REDIRECT_URI ||
   "https://coupang-price-monitor.onrender.com/kakao/callback";
 
-// 휴대폰 ntfy 알림
 const NTFY_TOPIC =
   process.env.NTFY_TOPIC || "withjuni-price-740921";
 
@@ -56,9 +55,44 @@ function formFetch(url, params) {
   });
 }
 
-// =========================
-// NTFY 휴대폰 알림
-// =========================
+function won(v) {
+  return Number(v || 0).toLocaleString("ko-KR") + "원";
+}
+
+function makeChangeMessage(name, changes) {
+  const lines = (changes || []).map(c => {
+    const previous = Number(c.previous);
+    const price = Number(c.price);
+    const diff =
+      c.diff != null
+        ? Number(c.diff)
+        : price - previous;
+
+    const arrow = diff > 0 ? "▲" : diff < 0 ? "▼" : "―";
+
+    return (
+      (c.name || "가격") +
+      ": " +
+      won(previous) +
+      " → " +
+      won(price) +
+      " " +
+      arrow +
+      won(Math.abs(diff))
+    );
+  });
+
+  return (
+    "쿠팡 가격 변동\n" +
+    (name || "쿠팡 상품") +
+    "\n" +
+    lines.join("\n")
+  );
+}
+
+// =====================
+// ntfy
+// =====================
 
 async function sendNtfy(text) {
   const response = await fetch(
@@ -66,9 +100,9 @@ async function sendNtfy(text) {
     {
       method: "POST",
       headers: {
-        "Title": "쿠팡 가격 변동",
-        "Priority": "5",
-        "Tags": "warning",
+        Title: "쿠팡 가격 변동",
+        Priority: "5",
+        Tags: "warning",
         "Content-Type": "text/plain; charset=utf-8"
       },
       body: text
@@ -82,9 +116,9 @@ async function sendNtfy(text) {
   return true;
 }
 
-// =========================
-// 카카오
-// =========================
+// =====================
+// Kakao
+// =====================
 
 async function kakaoAccessToken() {
   const d = rd();
@@ -102,7 +136,9 @@ async function kakaoAccessToken() {
     return k.access_token;
   }
 
-  if (!k.refresh_token) return k.access_token;
+  if (!k.refresh_token) {
+    return k.access_token;
+  }
 
   const params = {
     grant_type: "refresh_token",
@@ -123,8 +159,7 @@ async function kakaoAccessToken() {
 
   if (!response.ok) {
     throw new Error(
-      "카카오 토큰 갱신 실패: " +
-      JSON.stringify(token)
+      "카카오 토큰 갱신 실패: " + JSON.stringify(token)
     );
   }
 
@@ -154,7 +189,7 @@ async function sendKakao(text) {
 
   const template = {
     object_type: "text",
-    text: text,
+    text,
     link: {
       web_url:
         "https://coupang-price-monitor.onrender.com",
@@ -183,17 +218,16 @@ async function sendKakao(text) {
 
   if (!response.ok) {
     throw new Error(
-      "카카오 메시지 실패: " +
-      JSON.stringify(result)
+      "카카오 메시지 실패: " + JSON.stringify(result)
     );
   }
 
   return result;
 }
 
-// =========================
-// 카카오 로그인
-// =========================
+// =====================
+// Kakao login
+// =====================
 
 app.get("/kakao/login", (req, res) => {
   const state = crypto.randomBytes(16).toString("hex");
@@ -253,8 +287,7 @@ app.get("/kakao/callback", async (req, res) => {
 
     if (!response.ok) {
       return res.status(400).send(
-        "카카오 연결 실패: " +
-        JSON.stringify(token)
+        "카카오 연결 실패: " + JSON.stringify(token)
       );
     }
 
@@ -286,9 +319,9 @@ app.get("/kakao/callback", async (req, res) => {
   }
 });
 
-// =========================
-// 상품 목록
-// =========================
+// =====================
+// Items
+// =====================
 
 app.get("/api/items", auth, (req, res) => {
   res.json({
@@ -297,9 +330,9 @@ app.get("/api/items", auth, (req, res) => {
   });
 });
 
-// =========================
-// 알림 테스트
-// =========================
+// =====================
+// Test
+// =====================
 
 app.post("/api/notify-test", auth, async (req, res) => {
   const result = {
@@ -310,7 +343,7 @@ app.post("/api/notify-test", auth, async (req, res) => {
 
   try {
     await sendNtfy(
-      "가격 모니터 휴대폰 알림 테스트입니다."
+      "쿠팡 가격 모니터 휴대폰 알림 테스트입니다."
     );
     result.ntfy = true;
   } catch (e) {
@@ -329,30 +362,42 @@ app.post("/api/notify-test", auth, async (req, res) => {
   res.json(result);
 });
 
-// v1.7.1 확장프로그램 호환용
+// =====================
+// Extension change notify
+// =====================
+
 app.post("/api/notify-change", auth, async (req, res) => {
   const b = req.body || {};
 
-  const text =
-    b.text ||
-    b.message ||
-    "쿠팡 상품 가격이 변경되었습니다.";
+  let message = "";
+
+  if (Array.isArray(b.changes) && b.changes.length) {
+    message = makeChangeMessage(
+      b.name || b.productName,
+      b.changes
+    );
+  } else if (b.text || b.message) {
+    message = b.text || b.message;
+  } else {
+    message = "쿠팡 상품 가격이 변경되었습니다.";
+  }
 
   const result = {
     ok: true,
     kakao: false,
-    ntfy: false
+    ntfy: false,
+    message
   };
 
   try {
-    await sendNtfy(text);
+    await sendNtfy(message);
     result.ntfy = true;
   } catch (e) {
     result.ntfyError = e.message;
   }
 
   try {
-    await sendKakao(text);
+    await sendKakao(message);
     result.kakao = true;
   } catch (e) {
     result.kakaoError = e.message;
@@ -361,9 +406,9 @@ app.post("/api/notify-change", auth, async (req, res) => {
   res.json(result);
 });
 
-// =========================
-// 가격 업데이트
-// =========================
+// =====================
+// Price update
+// =====================
 
 app.post("/api/update", auth, async (req, res) => {
   const b = req.body || {};
@@ -388,22 +433,20 @@ app.post("/api/update", auth, async (req, res) => {
       changes.push({
         name: o.name,
         previous: Number(prev.price),
-        price: price,
+        price,
         diff: price - Number(prev.price)
       });
     }
 
     return {
       name: o.name,
-      price: price,
+      price,
       selected: !!o.selected,
       previous: prev.price ?? null,
-
       lowest:
         prev.lowest != null
           ? Math.min(Number(prev.lowest), price)
           : price,
-
       highest:
         prev.highest != null
           ? Math.max(Number(prev.highest), price)
@@ -429,8 +472,7 @@ app.post("/api/update", auth, async (req, res) => {
       name: "대표가격",
       previous: Number(old.price),
       price: currentPrice,
-      diff:
-        currentPrice - Number(old.price)
+      diff: currentPrice - Number(old.price)
     });
   }
 
@@ -440,21 +482,18 @@ app.post("/api/update", auth, async (req, res) => {
     name: b.name || "쿠팡 상품",
     price: currentPrice,
     previous: old.price ?? null,
-
     lowest:
       currentPrice == null
         ? old.lowest
         : old.lowest != null
         ? Math.min(Number(old.lowest), currentPrice)
         : currentPrice,
-
     highest:
       currentPrice == null
         ? old.highest
         : old.highest != null
         ? Math.max(Number(old.highest), currentPrice)
         : currentPrice,
-
     options,
     updatedAt: new Date().toISOString()
   };
@@ -472,27 +511,8 @@ app.post("/api/update", auth, async (req, res) => {
   };
 
   if (changes.length) {
-    const lines = changes.map(c => {
-      const arrow = c.diff > 0 ? "▲" : "▼";
-
-      return (
-        c.name +
-        ": " +
-        c.previous.toLocaleString("ko-KR") +
-        "원 → " +
-        c.price.toLocaleString("ko-KR") +
-        "원 " +
-        arrow +
-        Math.abs(c.diff).toLocaleString("ko-KR") +
-        "원"
-      );
-    });
-
     const message =
-      "쿠팡 가격 변동\n" +
-      item.name +
-      "\n" +
-      lines.join("\n");
+      makeChangeMessage(item.name, changes);
 
     try {
       await sendNtfy(message);
