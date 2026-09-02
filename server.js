@@ -52,10 +52,6 @@ function formFetch(url, params) {
   });
 }
 
-/* =========================
-   카카오 토큰
-========================= */
-
 async function kakaoAccessToken() {
   const d = rd();
   const k = d.kakao || {};
@@ -93,15 +89,13 @@ async function kakaoAccessToken() {
 
   if (!response.ok) {
     throw new Error(
-      "카카오 토큰 갱신 실패: " +
-        JSON.stringify(token)
+      "카카오 토큰 갱신 실패: " + JSON.stringify(token)
     );
   }
 
   k.access_token = token.access_token;
   k.accessExpiresAt =
-    Date.now() +
-    Number(token.expires_in || 21600) * 1000;
+    Date.now() + Number(token.expires_in || 21600) * 1000;
 
   if (token.refresh_token) {
     k.refresh_token = token.refresh_token;
@@ -119,19 +113,14 @@ async function kakaoAccessToken() {
   return k.access_token;
 }
 
-/* =========================
-   카카오 메시지 보내기
-========================= */
-
 async function sendKakao(text) {
   const token = await kakaoAccessToken();
 
   const template = {
     object_type: "text",
-    text: text,
+    text,
     link: {
-      web_url:
-        "https://coupang-price-monitor.onrender.com",
+      web_url: "https://coupang-price-monitor.onrender.com",
       mobile_web_url:
         "https://coupang-price-monitor.onrender.com"
     },
@@ -153,13 +142,13 @@ async function sendKakao(text) {
     }
   );
 
-  const result = await response
-    .json()
-    .catch(() => ({}));
+  const result = await response.json().catch(() => ({}));
 
   if (!response.ok) {
     throw new Error(
-      "카카오 메시지 실패: " +
+      "카카오 메시지 실패 HTTP " +
+        response.status +
+        ": " +
         JSON.stringify(result)
     );
   }
@@ -167,281 +156,225 @@ async function sendKakao(text) {
   return result;
 }
 
-/* =========================
-   카카오 로그인
-========================= */
-
 app.get("/kakao/login", (req, res) => {
-  const state =
-    crypto.randomBytes(16).toString("hex");
+  const state = crypto.randomBytes(16).toString("hex");
 
   const d = rd();
   d.kakaoState = state;
   wr(d);
 
-  const url =
-    new URL(
-      "https://kauth.kakao.com/oauth/authorize"
-    );
-
-  url.searchParams.set(
-    "response_type",
-    "code"
+  const url = new URL(
+    "https://kauth.kakao.com/oauth/authorize"
   );
 
-  url.searchParams.set(
-    "client_id",
-    KAKAO_REST_API_KEY
-  );
-
-  url.searchParams.set(
-    "redirect_uri",
-    KAKAO_REDIRECT_URI
-  );
-
-  url.searchParams.set(
-    "scope",
-    "talk_message"
-  );
-
-  url.searchParams.set(
-    "state",
-    state
-  );
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", KAKAO_REST_API_KEY);
+  url.searchParams.set("redirect_uri", KAKAO_REDIRECT_URI);
+  url.searchParams.set("scope", "talk_message");
+  url.searchParams.set("state", state);
 
   res.redirect(url.toString());
 });
 
-/* =========================
-   카카오 로그인 완료
-========================= */
+app.get("/kakao/callback", async (req, res) => {
+  try {
+    const d = rd();
 
-app.get(
-  "/kakao/callback",
-  async (req, res) => {
-    try {
-      const d = rd();
-
-      if (!req.query.code) {
-        return res
-          .status(400)
-          .send(
-            "카카오 인증 코드가 없습니다."
-          );
-      }
-
-      if (
-        d.kakaoState &&
-        req.query.state !== d.kakaoState
-      ) {
-        return res
-          .status(400)
-          .send(
-            "카카오 인증 state가 일치하지 않습니다."
-          );
-      }
-
-      const params = {
-        grant_type:
-          "authorization_code",
-        client_id:
-          KAKAO_REST_API_KEY,
-        redirect_uri:
-          KAKAO_REDIRECT_URI,
-        code: req.query.code
-      };
-
-      if (KAKAO_CLIENT_SECRET) {
-        params.client_secret =
-          KAKAO_CLIENT_SECRET;
-      }
-
-      const response =
-        await formFetch(
-          "https://kauth.kakao.com/oauth/token",
-          params
-        );
-
-      const token =
-        await response.json();
-
-      if (!response.ok) {
-        return res
-          .status(400)
-          .send(
-            "카카오 연결 실패: " +
-              JSON.stringify(token)
-          );
-      }
-
-      d.kakao = {
-        access_token:
-          token.access_token,
-
-        refresh_token:
-          token.refresh_token,
-
-        accessExpiresAt:
-          Date.now() +
-          Number(
-            token.expires_in || 21600
-          ) *
-            1000,
-
-        refreshExpiresAt:
-          Date.now() +
-          Number(
-            token.refresh_token_expires_in ||
-              0
-          ) *
-            1000,
-
-        savedAt:
-          new Date().toISOString()
-      };
-
-      delete d.kakaoState;
-
-      wr(d);
-
-      res.send(`
-        <h2>카카오톡 연결 완료</h2>
-        <p>
-          가격 변동 알림을 받을 준비가 되었습니다.
-        </p>
-      `);
-    } catch (e) {
-      res
-        .status(500)
-        .send(
-          "카카오 연결 오류: " +
-            e.message
-        );
+    if (!req.query.code) {
+      return res.status(400).send("카카오 인증 코드가 없습니다.");
     }
+
+    if (d.kakaoState && req.query.state !== d.kakaoState) {
+      return res
+        .status(400)
+        .send("카카오 인증 state가 일치하지 않습니다.");
+    }
+
+    const params = {
+      grant_type: "authorization_code",
+      client_id: KAKAO_REST_API_KEY,
+      redirect_uri: KAKAO_REDIRECT_URI,
+      code: req.query.code
+    };
+
+    if (KAKAO_CLIENT_SECRET) {
+      params.client_secret = KAKAO_CLIENT_SECRET;
+    }
+
+    const response = await formFetch(
+      "https://kauth.kakao.com/oauth/token",
+      params
+    );
+
+    const token = await response.json();
+
+    if (!response.ok) {
+      return res
+        .status(400)
+        .send("카카오 연결 실패: " + JSON.stringify(token));
+    }
+
+    d.kakao = {
+      access_token: token.access_token,
+      refresh_token: token.refresh_token,
+      accessExpiresAt:
+        Date.now() + Number(token.expires_in || 21600) * 1000,
+      refreshExpiresAt:
+        Date.now() +
+        Number(token.refresh_token_expires_in || 0) * 1000,
+      savedAt: new Date().toISOString()
+    };
+
+    delete d.kakaoState;
+    wr(d);
+
+    res.send(`
+      <h2>카카오톡 연결 완료</h2>
+      <p>가격 변동 알림을 받을 준비가 되었습니다.</p>
+    `);
+  } catch (e) {
+    res.status(500).send("카카오 연결 오류: " + e.message);
   }
-);
+});
 
-/* =========================
-   상품 목록
-========================= */
+app.get("/api/items", auth, (req, res) => {
+  res.json({
+    ok: true,
+    items: rd().items || []
+  });
+});
 
-app.get(
-  "/api/items",
-  auth,
-  (req, res) => {
+app.post("/api/notify-test", auth, async (req, res) => {
+  try {
+    await sendKakao(
+      "쿠팡 가격 모니터 테스트\n카카오톡 알림 연결이 정상입니다."
+    );
+
     res.json({
       ok: true,
-      items: rd().items || []
+      kakao: true
+    });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      error: e.message
     });
   }
-);
+});
 
-/* =========================
-   알림 테스트
-========================= */
+/* v1.7.1 확장프로그램 가격변동 알림용 */
+app.post("/api/notify-change", auth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const name = b.name || "쿠팡 상품";
+    const changes = Array.isArray(b.changes) ? b.changes : [];
 
-app.post(
-  "/api/notify-test",
-  auth,
-  async (req, res) => {
-    try {
-      await sendKakao(
-        "쿠팡 가격 모니터 테스트\n카카오톡 알림 연결이 정상입니다."
-      );
-
-      res.json({
+    if (!changes.length) {
+      return res.json({
         ok: true,
-        kakao: true
-      });
-    } catch (e) {
-      res.status(500).json({
-        ok: false,
-        error: e.message
+        sent: false,
+        reason: "no changes"
       });
     }
+
+    const lines = changes.map(c => {
+      const previous = Number(c.previous);
+      const price = Number(c.price);
+      const diff = Number.isFinite(Number(c.diff))
+        ? Number(c.diff)
+        : price - previous;
+
+      const arrow = diff > 0 ? "▲" : diff < 0 ? "▼" : "→";
+
+      return (
+        (c.name || "가격") +
+        ": " +
+        previous.toLocaleString("ko-KR") +
+        "원 → " +
+        price.toLocaleString("ko-KR") +
+        "원 " +
+        arrow +
+        Math.abs(diff).toLocaleString("ko-KR") +
+        "원"
+      );
+    });
+
+    await sendKakao(
+      "쿠팡 가격 변동\n" +
+        name +
+        "\n" +
+        lines.join("\n")
+    );
+
+    res.json({
+      ok: true,
+      sent: true
+    });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      error: e.message
+    });
   }
-);
+});
 
-/* =========================
-   가격 업데이트
-========================= */
-
-app.post(
-  "/api/update",
-  auth,
-  async (req, res) => {
+app.post("/api/update", auth, async (req, res) => {
+  try {
     const b = req.body || {};
+
+    if (!b.url) {
+      return res.status(400).json({
+        ok: false,
+        error: "url required"
+      });
+    }
+
     const d = rd();
 
     const old =
-      (d.items || []).find(
-        x => x.url === b.url
-      ) || {};
+      (d.items || []).find(x => x.url === b.url) || {};
 
-    const oldOptions =
-      old.options || [];
-
+    const oldOptions = old.options || [];
     const changes = [];
 
-    const options =
-      (b.options || []).map(o => {
-        const prev =
-          oldOptions.find(
-            x => x.name === o.name
-          ) || {};
+    const options = (b.options || []).map(o => {
+      const prev =
+        oldOptions.find(x => x.name === o.name) || {};
 
-        const price =
-          Number(o.price);
+      const price = Number(o.price);
 
-        if (
-          prev.price != null &&
-          Number(prev.price) !== price
-        ) {
-          changes.push({
-            name: o.name,
-            previous:
-              Number(prev.price),
-            price: price,
-            diff:
-              price -
-              Number(prev.price)
-          });
-        }
-
-        return {
+      if (
+        prev.price != null &&
+        Number(prev.price) !== price
+      ) {
+        changes.push({
           name: o.name,
-          price: price,
-          selected: !!o.selected,
+          previous: Number(prev.price),
+          price,
+          diff: price - Number(prev.price)
+        });
+      }
 
-          previous:
-            prev.price ?? null,
-
-          lowest:
-            prev.lowest != null
-              ? Math.min(
-                  Number(prev.lowest),
-                  price
-                )
-              : price,
-
-          highest:
-            prev.highest != null
-              ? Math.max(
-                  Number(prev.highest),
-                  price
-                )
-              : price
-        };
-      });
+      return {
+        name: o.name,
+        price,
+        selected: !!o.selected,
+        previous: prev.price ?? null,
+        lowest:
+          prev.lowest != null
+            ? Math.min(Number(prev.lowest), price)
+            : price,
+        highest:
+          prev.highest != null
+            ? Math.max(Number(prev.highest), price)
+            : price
+      };
+    });
 
     const currentPrice =
-      Number.isFinite(
-        Number(b.price)
-      )
+      Number.isFinite(Number(b.price))
         ? Number(b.price)
-        : options.find(
-            o => o.selected
-          )?.price ??
+        : options.find(o => o.selected)?.price ??
           options[0]?.price ??
           null;
 
@@ -450,106 +383,64 @@ app.post(
       !options.length &&
       old.price != null &&
       currentPrice != null &&
-      Number(old.price) !==
-        currentPrice
+      Number(old.price) !== currentPrice
     ) {
       changes.push({
         name: "대표가격",
-        previous:
-          Number(old.price),
-        price:
-          currentPrice,
-        diff:
-          currentPrice -
-          Number(old.price)
+        previous: Number(old.price),
+        price: currentPrice,
+        diff: currentPrice - Number(old.price)
       });
     }
 
     const item = {
-      id:
-        old.id ||
-        crypto.randomUUID(),
-
+      id: old.id || crypto.randomUUID(),
       url: b.url,
-
-      name:
-        b.name ||
-        "쿠팡 상품",
-
-      price:
-        currentPrice,
-
-      previous:
-        old.price ?? null,
-
+      name: b.name || old.name || "쿠팡 상품",
+      price: currentPrice,
+      previous: old.price ?? null,
       lowest:
         currentPrice == null
           ? old.lowest
           : old.lowest != null
-          ? Math.min(
-              Number(old.lowest),
-              currentPrice
-            )
+          ? Math.min(Number(old.lowest), currentPrice)
           : currentPrice,
-
       highest:
         currentPrice == null
           ? old.highest
           : old.highest != null
-          ? Math.max(
-              Number(old.highest),
-              currentPrice
-            )
+          ? Math.max(Number(old.highest), currentPrice)
           : currentPrice,
-
-      options:
-        options,
-
-      updatedAt:
-        new Date().toISOString()
+      options,
+      updatedAt: new Date().toISOString()
     };
 
     d.items = [
       item,
-      ...(d.items || []).filter(
-        x => x.url !== b.url
-      )
+      ...(d.items || []).filter(x => x.url !== b.url)
     ];
 
     wr(d);
 
-    let kakao = {
-      sent: false
-    };
+    let kakao = { sent: false };
 
     if (changes.length) {
-      const lines =
-        changes.map(c => {
-          const arrow =
-            c.diff > 0
-              ? "▲"
-              : "▼";
+      const lines = changes.map(c => {
+        const arrow =
+          c.diff > 0 ? "▲" : c.diff < 0 ? "▼" : "→";
 
-          return (
-            c.name +
-            ": " +
-            c.previous.toLocaleString(
-              "ko-KR"
-            ) +
-            "원 → " +
-            c.price.toLocaleString(
-              "ko-KR"
-            ) +
-            "원 " +
-            arrow +
-            Math.abs(
-              c.diff
-            ).toLocaleString(
-              "ko-KR"
-            ) +
-            "원"
-          );
-        });
+        return (
+          c.name +
+          ": " +
+          c.previous.toLocaleString("ko-KR") +
+          "원 → " +
+          c.price.toLocaleString("ko-KR") +
+          "원 " +
+          arrow +
+          Math.abs(c.diff).toLocaleString("ko-KR") +
+          "원"
+        );
+      });
 
       try {
         await sendKakao(
@@ -559,9 +450,7 @@ app.post(
             lines.join("\n")
         );
 
-        kakao = {
-          sent: true
-        };
+        kakao = { sent: true };
       } catch (e) {
         kakao = {
           sent: false,
@@ -576,22 +465,20 @@ app.post(
       changes,
       kakao
     });
+  } catch (e) {
+    res.status(500).json({
+      ok: false,
+      error: e.message
+    });
   }
-);
+});
 
 app.get("*", (req, res) => {
   res.sendFile(
-    path.join(
-      __dirname,
-      "public",
-      "index.html"
-    )
+    path.join(__dirname, "public", "index.html")
   );
 });
 
 app.listen(PORT, () => {
-  console.log(
-    "listening",
-    PORT
-  );
+  console.log("listening", PORT);
 });
