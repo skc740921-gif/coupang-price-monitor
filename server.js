@@ -95,22 +95,23 @@ function makeChangeMessage(name, changes) {
 // =====================
 
 async function sendNtfy(text) {
-  const response = await fetch(
-    "https://ntfy.sh/" + encodeURIComponent(NTFY_TOPIC),
-    {
-      method: "POST",
-      headers: {
-        Title: "쿠팡 가격 변동",
-        Priority: "5",
-        Tags: "warning",
-        "Content-Type": "text/plain; charset=utf-8"
-      },
-      body: text
-    }
-  );
+  const response = await fetch("https://ntfy.sh", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      topic: NTFY_TOPIC,
+      title: "쿠팡 가격 변동",
+      message: text,
+      priority: 5,
+      tags: ["warning"]
+    })
+  });
 
   if (!response.ok) {
-    throw new Error("ntfy HTTP " + response.status);
+    const body = await response.text().catch(() => "");
+    throw new Error("ntfy HTTP " + response.status + " " + body);
   }
 
   return true;
